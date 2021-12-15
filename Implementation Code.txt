@@ -1,0 +1,206 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+public Camera mainCamera;
+public Camera hoodCamera;
+
+public bool activeControl = true;
+
+public class BikeSetting// Setting up bike's properties
+{
+	public bool automaticGear = true;
+	public float[] gears = { -10f, 9f, 6f, 4.5f, 3f, 2.5f };
+	public bool grounded = true;
+	public bool crash;
+	public bool shift;
+	public float speed = 0.0f;
+	public int currentGear = 0;
+	public bool NeutralGear = true;
+	public float motorRPM = 0.0f;
+	private bool shifting;
+	private float Wheelie;
+	private WheelComponent[] wheels;	
+}
+
+
+private class WheelComponent // Setting up class to set all the wheel properties
+    {
+
+        public Transform wheel;
+        public Transform axle;
+        public WheelCollider collider;
+        public Vector3 startPos;
+        public float rotation = 0.0f;
+        public float maxSteer;
+        public bool drive;
+        public float pos_y = 0.0f;
+    }
+
+private WheelComponent SetWheelComponent(Transform wheel, Transform axle, bool drive, float maxSteer, float pos_y)// Setting up all the properties of the wheel
+    {
+
+        WheelComponent result = new WheelComponent(); // Creating a new wheel Component result
+        GameObject wheelCol = new GameObject(wheel.name + "WheelCollider"); // Creating a new GameObject by the name wheel.name + "WheelCollider"
+
+
+
+        wheelCol.transform.parent = transform;// setting transform of wheelCol with the tranform of the bike GameObject
+        wheelCol.transform.position = wheel.position;// Setting position of wheel Collider
+        wheelCol.transform.eulerAngles = transform.eulerAngles;// Setting euler angles of the wheelCollider
+        pos_y = wheelCol.transform.localPosition.y;// getting the y position of the wheelCollider
+
+
+       
+        wheelCol.AddComponent(typeof(WheelCollider));// Adding a WheelCollider Component in WheelCol GameObject
+
+        // Setting up all the parameters of the result WheelComponent
+        result.drive = drive;
+        result.wheel = wheel;
+        result.axle = axle;
+        result.collider = wheelCol.GetComponent<WheelCollider>();
+        result.pos_y = pos_y;
+        result.maxSteer = maxSteer;
+        result.startPos = axle.transform.localPosition;
+
+        return result;// returning type WheelComponent
+
+    }
+
+public void ShiftUp()
+    {
+
+        float now = Time.timeSinceLevelLoad;
+
+        if (now < shiftDelay) return;
+
+        if (currentGear < bikeSetting.gears.Length - 1)// checking whether if the current gear is at the maximum or not
+        {
+
+            if (!bikeSetting.automaticGear)// checking whether autogear is turned on
+            {
+                if (currentGear == 0)
+                {
+                    if (NeutralGear) { currentGear++; NeutralGear = false; }// shifting up to the next gear
+                    else
+                    { NeutralGear = true; }// making gear to neutral
+                }
+                else
+                {
+                    currentGear++;// shifting up gear
+                }
+            }
+            else
+            {
+                currentGear++;
+            }
+
+
+               shiftDelay = now + 1.0f;
+               shiftTime = 1.0f;
+        }
+    }
+
+    public void ShiftDown()
+    {
+           float now = Time.timeSinceLevelLoad;
+
+           if (now < shiftDelay) return;
+
+        if (currentGear > 0 || NeutralGear)// checking whether gear is on neutral or level 0(reverse)
+        {
+
+            if (!bikeSetting.automaticGear)// checking if autogear
+            {
+
+                if (currentGear == 1)
+                {
+                    if (!NeutralGear) { currentGear--; NeutralGear = true; }// shifting gear down by currentGear--
+                }
+                else if (currentGear == 0) { NeutralGear = false; } else { currentGear--; }
+            }
+            else
+            {
+                currentGear--;// shifting down gear by 1 level
+            }
+                shiftDelay = now + 0.1f;
+                shiftTime = 2.0f;
+        }
+    }
+
+
+
+void Update()
+    {
+	// Toggling hood camera on or off by using the key C
+        if(Input.GetKeyDown(KeyCode.C))
+        {
+            mainCamera.enabled = !mainCamera.enabled;
+            hoodCamera.enabled = !hoodCamera.enabled;
+        }
+
+        if (!crash)
+            {
+
+                steer = Mathf.MoveTowards(steer, Input.GetAxis("Horizontal"), 0.1f);
+                accel = Input.GetAxis("Vertical");// getting the controls of up,down,left,right arrows from unity project settings
+                brake = Input.GetButton("Jump");
+                shift = Input.GetKey(KeyCode.LeftShift) | Input.GetKey(KeyCode.RightShift);
+            }
+	
+        if (activeControl)
+        {
+
+            if (!bikeSetting.automaticGear)
+            {
+                if (Input.GetKeyDown("page up"))
+                {
+                    ShiftUp();// Shifting gear 1 level up
+
+
+                }
+                if (Input.GetKeyDown("page down"))
+                {
+                    ShiftDown();// Shifting gear 1 level down
+
+                }
+            }
+
+        }
+
+        steer2 = Mathf.LerpAngle(steer2, steer * -bikeSetting.maxSteerAngle, Time.deltaTime * 10.0f);// Setting steer angle of the bike
+
+        MotorRotation = Mathf.LerpAngle(MotorRotation, steer2 * bikeSetting.maxTurn * (Mathf.Clamp(speed / Z_Rotation, 0.0f, 1.0f)), Time.deltaTime * 5.0f);
+
+        if (bikeSetting.bikeSteer)
+            bikeSetting.bikeSteer.localRotation = SteerRotation * Quaternion.Euler(0, wheels[0].collider.steerAngle, 0); // this is 90 degrees around y axis
+
+
+	
+        if (!crash)// wheelie possible only when the bike has not crashed
+        {
+            
+            if (shifting)// wheelie while shifting(Power Wheelie)
+            {
+                Wheelie += bikeSetting.speedWheelie * Time.deltaTime / (speed / 50);
+            }
+            else// wheelie while not shifting
+            {
+                Wheelie = Mathf.MoveTowards(Wheelie, 0, (bikeSetting.speedWheelie * 2) * Time.deltaTime * 1.3f);
+            }
+
+            deltaRotation1 = Quaternion.Euler(-Wheelie, 0, flipRotate - transform.localEulerAngles.z + (MotorRotation));
+            deltaRotation2 = Quaternion.Euler(0, 0, flipRotate - transform.localEulerAngles.z);
+
+
+            myRigidbody.MoveRotation(myRigidbody.rotation * deltaRotation2);
+            bikeSetting.MainBody.localRotation = deltaRotation1;
+
+        }
+        else
+        {
+
+            bikeSetting.MainBody.localRotation = Quaternion.identity;
+            Wheelie = 0;
+        }
+    }
